@@ -8,12 +8,27 @@ import os
 import time
 
 # ======================= 配置 =======================
-README_URLS = [
+SOURCES_FILE = 'sources.txt'   # 来源清单，一行一个 URL
+
+DEFAULT_SOURCES = [  # sources.txt 不存在时的兜底列表
     "https://raw.githubusercontent.com/toshare5/toshare5.github.io/main/README.md",
     "https://raw.githubusercontent.com/abshare3/abshare3.github.io/main/README.md",
     "https://raw.githubusercontent.com/mkshare3/mkshare3.github.io/main/README.md",
     "https://raw.githubusercontent.com/tolinkshare2/tolinkshare2.github.io/main/README.md",
 ]
+
+def load_sources():
+    """从 sources.txt 读取来源列表（支持 # 注释）"""
+    urls = []
+    try:
+        with open(SOURCES_FILE, encoding='utf-8') as f:
+            for line in f:
+                line = line.split('#', 1)[0].strip()
+                if line.startswith('http'):
+                    urls.append(line)
+    except FileNotFoundError:
+        pass
+    return urls or DEFAULT_SOURCES
 
 UA_LIST = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -304,7 +319,7 @@ def main():
     sub_urls, direct_nodes = set(), []
 
     # 1) 读取 README，精准提取订阅链接（raw.githubusercontent 不封锁，直连）
-    for url in README_URLS:
+     for url in load_sources():
         try:
             r = requests.get(url, headers={'User-Agent': UA_LIST[0]}, timeout=15)
             r.raise_for_status()
