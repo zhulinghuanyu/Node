@@ -1,0 +1,7 @@
+services:
+  subconverter:
+    image: tindy2013/subconverter:latest
+    container_name: subconverter
+    ports:
+      - "25500:25500"
+    restart: unless-stopped
