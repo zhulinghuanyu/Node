@@ -1,0 +1,38 @@
+{
+  "updated_at_utc": "2026-08-11T07:34:45.592247+00:00",
+  "readme_sources": 4,
+  "subscription_urls": 4,
+  "clash": {
+    "successful_sources": 4,
+    "failed_sources": 0,
+    "proxies": 11,
+    "failed": []
+  },
+  "v2ray": {
+    "successful_sources": 0,
+    "failed_sources": 4,
+    "failed": [
+      {
+        "url": "https://WhN93g.tosslk.xyz/a81c61b093a9916b415bba1bb707e2c3",
+        "error": "HTTP 414 from subconverter: "
+      },
+      {
+        "url": "https://2ekzqZ.absslk.xyz/45f229be72c0650171776d6692e37673",
+        "error": "HTTP 414 from subconverter: "
+      },
+      {
+        "url": "https://iEsQSn.mcsslk.xyz/f28ae22c71d97346cb5cecba1f286b04",
+        "error": "HTTP 414 from subconverter: "
+      },
+      {
+        "url": "https://UWbJM8.tosslk.xyz/fe5b4f1f98b5f221abdc66302bbf6beb",
+        "error": "HTTP 414 from subconverter: "
+      }
+    ]
+  },
+  "nodes": {
+    "unique": 0,
+    "direct_fetch_failures": 0
+  },
+  "failed_readmes": 0
+}
