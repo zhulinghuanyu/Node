@@ -26,7 +26,7 @@ jobs:
         pip install requests pyyaml pysocks
 
     - name: Run crawler script
-      run: python crawl.py
+      run: python scrape.py
       env:
         PROXY_URL: ${{ secrets.PROXY_URL }}   # 可选：自建代理，最稳
 
