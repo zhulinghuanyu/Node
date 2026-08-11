@@ -87,16 +87,69 @@ def is_candidate(url):
         return False
     if IMAGE_EXT.search(p.path):
         return False
+
+    # Common invitation/referral URLs are not subscription feeds.
+    # Example: https://xxxx.example/i/AbCd1234
+    if re.match(r"^/i(?:/|$)", p.path, re.I):
+        return False
+
     return True
 
 
 def extract_urls(text):
+    """
+    Prefer URLs inside Markdown fenced code blocks.
+
+    The supplied README sources put actual subscription URLs inside
+    ``` ... ``` blocks, while registration/referral URLs are inline.
+    The old implementation collected both, which caused subconverter
+    to receive referral URLs such as `/i/...` and return:
+        HTTP 400: No nodes were found
+
+    For generic README files, if no fenced subscription URLs are found,
+    fall back to URLs on lines whose nearby text mentions subscription
+    clients such as Clash/v2ray/iOS.
+    """
     result = []
-    for raw in URL_RE.findall(text):
-        u = clean_url(raw)
-        if is_candidate(u):
-            result.append(u)
-    return result
+
+    # 1) Highest-confidence source: fenced code blocks.
+    fenced = re.findall(r"```(?:[^\n]*)\n(.*?)```", text, flags=re.S)
+    for block in fenced:
+        for raw in URL_RE.findall(block):
+            u = clean_url(raw)
+            if is_candidate(u):
+                result.append(u)
+
+    if result:
+        return unique(result)
+
+    # 2) Fallback: inspect a small context window around subscription
+    # headings. This supports sources that don't use fenced code blocks.
+    lines = text.splitlines()
+    keywords = (
+        "clash",
+        "v2ray",
+        "v2rayn",
+        "shadowrocket",
+        "小火箭",
+        "订阅",
+        "subscription",
+    )
+
+    for i, line in enumerate(lines):
+        lower = line.lower()
+
+        if not any(k in lower for k in keywords):
+            continue
+
+        context = "\n".join(lines[i:i + 5])
+
+        for raw in URL_RE.findall(context):
+            u = clean_url(raw)
+            if is_candidate(u):
+                result.append(u)
+
+    return unique(result)
 
 
 def unique(items):
