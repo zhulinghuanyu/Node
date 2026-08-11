@@ -2,8 +2,8 @@ name: Auto Crawl and Update Subscriptions
 
 on:
   schedule:
-    - cron: '0 */6 * * *'   # 每 6 小时自动运行
-  workflow_dispatch:        # 支持手动触发
+    - cron: '7,37 * * * *'   # 每小时 07 分和 37 分运行，避开整点高峰
+  workflow_dispatch:
 
 jobs:
   build:
