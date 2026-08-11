@@ -9,14 +9,14 @@
 - 从多个 README 自动提取 HTTP/HTTPS 订阅链接
 - 自动去重
 - GitHub Actions 每 30 分钟自动更新
-- 使用 `tindy2013/subconverter` 转换：
+- 使用 `tindy2013/subconverter` **逐个源转换**，再在本地合并：
   - `output/clash.yaml`
   - `output/v2ray-subconverter.txt`
 - 尝试提取标准节点 URI，并生成：
   - `output/nodes.txt`
   - `output/v2ray.txt`（Base64）
 - 生成 `output/status.json` 记录运行结果
-- 某个 README 或单个订阅失败不会立即中断整个抓取流程；但最终没有任何有效源时任务失败
+- 某个 README 或单个订阅转换失败不会导致全部任务失败；脚本会记录失败源并继续处理其他源，但最终没有任何有效转换结果时任务失败
 
 ## 目录
 
@@ -147,3 +147,29 @@ https://github.com/tindy2013/subconverter
 Docker 镜像：
 
 https://hub.docker.com/r/tindy2013/subconverter
+
+
+## 为什么是“逐个转换”
+
+不要把几十个订阅 URL 一次性拼进一个 `url=` 参数。某一个源返回异常内容时，可能导致 subconverter 整个请求返回 `400 Bad Request`，同时也会让问题源很难定位。
+
+当前版本改为：
+
+```text
+订阅 A → subconverter → Clash
+订阅 B → subconverter → Clash
+订阅 C → subconverter → 失败（记录）
+订阅 D → subconverter → Clash
+                      ↓
+                 本地合并
+```
+
+这样即使某个源失效，其余源仍然可以正常生成。
+
+如果 Actions 日志出现：
+
+```text
+[WARN] clash ... FAILED
+```
+
+后面会继续处理其他源；只有全部源都失败才会退出。
