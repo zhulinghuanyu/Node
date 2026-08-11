@@ -1,39 +1,41 @@
-name: Update Subscription Links
+name: Auto Crawl and Update Subscriptions
 
 on:
   schedule:
-    # 定时任务，使用cron表达式。这里是每天UTC时间0点运行（北京时间早上8点）
-    - cron: '0 0 * * *'
+    # 每 6 小时运行一次 (UTC 时间)
+    - cron: '0 */6 * * *'
   workflow_dispatch: # 允许手动触发
 
 jobs:
-  update-subscriptions:
+  build:
     runs-on: ubuntu-latest
+    
+    # 授予 Action 写入仓库文件的权限
+    permissions:
+      contents: write
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests beautifulsoup4 pyyaml github3.py
-
-      - name: Run subscription updater script
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 自动提供的Token，有当前仓库的读写权限
-        run: |
-          # 将你的脚本文件名替换为实际名称，例如 update_subs.py
-          python scrape.py
-
-      - name: Commit and push changes
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add subscriptions/
-          git diff --quiet && git diff --staged --quiet || git commit -m "Auto-update subscription links [skip ci]"
-          git push
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests pyyaml
+        
+    - name: Run crawler script
+      run: python scrape.py
+      
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add v2ray.txt clash.yaml
+        # 只有文件发生变化时才提交
+        git diff --staged --quiet || git commit -m "Auto update subscriptions - $(date +'%Y-%m-%d %H:%M:%S')"
+        git push
