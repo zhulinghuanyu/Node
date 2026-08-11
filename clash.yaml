@@ -1,16 +1,6 @@
-# 自动生成 - 2026-08-11 07:57:11
+# 自动生成于 2026-08-11 08:04:04
 # 节点数量: 0
-# 建议配合 subconverter 使用更完整的转换
+# 建议直接使用 v2ray.txt 或原订阅链接，效果更好
 
-proxies:
-  []
-
-proxy-groups:
-  - name: PROXY
-    type: select
-    proxies:
-      - DIRECT
-
-
-rules:
-  - MATCH,PROXY
+# 如果你想用完整 Clash 配置，推荐把 v2ray.txt 丢给 subconverter：
+# https://sub.xeton.dev/sub?target=clash&url=你的v2ray.txt的raw地址
