@@ -4,127 +4,91 @@ import re
 import requests
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote
 
-SOURCES = [
-    "https://raw.githubusercontent.com/toshare5/toshare5.github.io/main/README.md",
-    "https://raw.githubusercontent.com/abshare3/abshare3.github.io/main/README.md",
-    "https://raw.githubusercontent.com/mkshare3/mkshare3.github.io/main/README.md",
-    "https://raw.githubusercontent.com/tolinkshare2/tolinkshare2.github.io/main/README.md",
-]
-
-# 公共 subconverter 后端（可多备几个）
-SUBCONVERTERS = [
-    "https://url.v1.mk/sub",
-    "https://sub.xeton.dev/sub",
-    "https://api.dler.io/sub",
-    "https://subapi.cmliussss.net/sub",
-    "https://api.wcc.best/sub",
-]
+SOURCES = {
+    "toshare5": "https://raw.githubusercontent.com/toshare5/toshare5.github.io/main/README.md",
+    "abshare3": "https://raw.githubusercontent.com/abshare3/abshare3.github.io/main/README.md",
+    "mkshare3": "https://raw.githubusercontent.com/mkshare3/mkshare3.github.io/main/README.md",
+    "tolinkshare2": "https://raw.githubusercontent.com/tolinkshare2/tolinkshare2.github.io/main/README.md",
+}
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 }
 
-def extract_links(text: str) -> list[str]:
+def extract_link(text: str) -> str | None:
+    """每个 README 只取第一个匹配的订阅链接"""
     pattern = r'https?://[a-zA-Z0-9.-]+\.(?:tosslk|absslk|mcsslk)\.xyz/[a-f0-9]{32}'
-    return list(dict.fromkeys(re.findall(pattern, text)))
-
-def convert_with_subconverter(links: list[str], target: str = "clash") -> str | None:
-    """调用公共 subconverter 转换"""
-    if not links:
-        return None
-
-    # 多个订阅用 | 连接
-    url_param = "|".join(links)
-    encoded_url = quote(url_param, safe="")
-
-    for backend in SUBCONVERTERS:
-        try:
-            api = f"{backend}?target={target}&url={encoded_url}&list=true"
-            print(f"  尝试后端: {backend}")
-            r = requests.get(api, headers=HEADERS, timeout=30)
-            if r.status_code == 200 and r.text.strip():
-                print(f"  ✅ 转换成功 ← {backend}")
-                return r.text
-            else:
-                print(f"  ❌ 状态码 {r.status_code}")
-        except Exception as e:
-            print(f"  ❌ 失败: {e}")
-    return None
+    matches = re.findall(pattern, text)
+    return matches[0] if matches else None
 
 def main():
     print(f"[{datetime.now()}] 开始抓取...")
-    all_links = []
+    results = {}
 
-    for src in SOURCES:
+    for name, url in SOURCES.items():
         try:
-            print(f"Fetching README: {src}")
-            r = requests.get(src, headers=HEADERS, timeout=15)
+            print(f"Fetching: {name}")
+            r = requests.get(url, headers=HEADERS, timeout=15)
             r.raise_for_status()
-            links = extract_links(r.text)
-            print(f"  找到: {links}")
-            all_links.extend(links)
+            link = extract_link(r.text)
+            if link:
+                results[name] = link
+                print(f"  → {link}")
+            else:
+                print(f"  → 未找到链接")
         except Exception as e:
-            print(f"  失败: {e}")
+            print(f"  → 失败: {e}")
 
-    unique_links = list(dict.fromkeys(all_links))
-    print(f"\n共 {len(unique_links)} 个订阅链接")
+    print(f"\n成功获取 {len(results)} 个链接")
 
-    if not unique_links:
-        print("没有找到任何链接，退出")
-        return
+    # 生成 sub_links.txt（每行一个）
+    lines = [f"{name}: {link}" for name, link in results.items()]
+    Path("sub_links.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    # 保存原始链接
-    Path("sub_links.txt").write_text("\n".join(unique_links) + "\n", encoding="utf-8")
+    # 生成纯链接列表（方便复制）
+    pure_links = list(results.values())
+    Path("links.txt").write_text("\n".join(pure_links) + "\n", encoding="utf-8")
 
-    # 调用 subconverter 生成 Clash 配置
-    print("\n正在调用公共 subconverter 生成 Clash 配置...")
-    clash_content = convert_with_subconverter(unique_links, target="clash")
-    if clash_content:
-        Path("clash.yaml").write_text(clash_content, encoding="utf-8")
-        print("clash.yaml 已生成")
-    else:
-        Path("clash.yaml").write_text("# 转换失败，请稍后重试\n", encoding="utf-8")
+    # 更新 README.md
+    now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    readme = f"""# 免费订阅链接自动更新
 
-    # 生成 v2ray 格式（base64）
-    print("\n正在生成 v2ray 格式...")
-    v2ray_content = convert_with_subconverter(unique_links, target="v2ray")
-    if v2ray_content:
-        Path("v2ray.txt").write_text(v2ray_content, encoding="utf-8")
-        print("v2ray.txt 已生成")
-    else:
-        # 兜底：直接把链接列表 base64
-        import base64
-        Path("v2ray.txt").write_text(
-            base64.b64encode("\n".join(unique_links).encode()).decode(),
-            encoding="utf-8"
-        )
+> 最后更新时间：`{now}`
 
-    # 更新 README
-    readme = f"""# 免费节点自动更新
+## 最新订阅链接（每个源一个）
 
-> 更新时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-> 订阅源数量：{len(unique_links)}
-
-## 订阅地址
-
-| 类型 | 地址 |
-|------|------|
-| **Clash / mihomo** | [`clash.yaml`](./clash.yaml) |
-| **v2ray / 小火箭 / v2rayN** | [`v2ray.txt`](./v2ray.txt) |
-| 原始订阅链接 | [`sub_links.txt`](./sub_links.txt) |
-
-### 原始链接（可直接使用）
-
+| 来源 | 订阅链接（Clash / v2ray / 小火箭 通用） |
+|------|----------------------------------------|
 """
-    for i, link in enumerate(unique_links, 1):
-        readme += f"{i}. `{link}`\n"
+    for name, link in results.items():
+        readme += f"| **{name}** | `{link}` |\n"
 
-    readme += "\n> 由公共 subconverter 自动转换生成，免费节点请勿过度依赖。"
+    readme += f"""
+## 使用方法
+
+直接复制上面任意一个链接，添加到：
+
+- **Clash / Clash Verge / mihomo / Stash**
+- **v2rayN / v2rayNG**
+- **小火箭 / Shadowrocket**
+
+## 文件说明
+
+- [`sub_links.txt`](./sub_links.txt) - 带来源标注的链接
+- [`links.txt`](./links.txt) - 纯链接列表
+
+> 这些是公共免费节点，稳定性有限，建议多备几个源，定期更新。
+"""
     Path("README.md").write_text(readme, encoding="utf-8")
 
-    print("\n全部完成！")
+    # 占位文件（避免旧文件干扰）
+    Path("clash.yaml").write_text(
+        f"# 请直接使用上方原订阅链接\n# 更新时间: {now}\n", encoding="utf-8"
+    )
+    Path("v2ray.txt").write_text("", encoding="utf-8")
+
+    print("已生成: README.md / sub_links.txt / links.txt")
 
 if __name__ == "__main__":
     main()
