@@ -2,8 +2,8 @@ name: Auto Crawl and Update Subscriptions
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
-  workflow_dispatch:
+    - cron: '0 */6 * * *'   # 每 6 小时自动运行
+  workflow_dispatch:        # 支持手动触发
 
 jobs:
   build:
@@ -26,9 +26,9 @@ jobs:
         pip install requests pyyaml pysocks
 
     - name: Run crawler script
-      run: python scrape.py
+      run: python crawl.py
       env:
-        PROXY_URL: ${{ secrets.PROXY_URL }}   # 可选，见下方说明
+        PROXY_URL: ${{ secrets.PROXY_URL }}   # 可选：自建代理，最稳
 
     - name: Commit and push changes
       run: |
