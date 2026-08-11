@@ -7,6 +7,7 @@ import yaml
 import os
 import time
 
+# ======================= 配置 =======================
 README_URLS = [
     "https://raw.githubusercontent.com/toshare5/toshare5.github.io/main/README.md",
     "https://raw.githubusercontent.com/abshare3/abshare3.github.io/main/README.md",
@@ -41,19 +42,21 @@ def _try_get(url, ua, proxies=None, timeout=15):
 def fetch(url, retries=2):
     """自建代理 > 轮换UA直连 > 公共中继(绕过IP级403)，均带重试"""
     proxy = os.environ.get('PROXY_URL', '').strip()
-    if proxy:  # 在仓库 Secrets 里配置 PROXY_URL 后优先走自己的代理，最稳
+    if proxy:
         proxies = {'http': proxy, 'https': proxy}
         for _ in range(retries):
             text = _try_get(url, UA_LIST[0], proxies)
-            if text is not None: return text
+            if text is not None:
+                return text
             time.sleep(1)
 
-    for ua in UA_LIST:  # 直连轮换 UA
+    for ua in UA_LIST:
         text = _try_get(url, ua)
-        if text is not None: return text
+        if text is not None:
+            return text
         time.sleep(0.5)
 
-    enc = urllib.parse.quote(url, safe='')  # 公共中继
+    enc = urllib.parse.quote(url, safe='')
     relays = [
         f'https://api.allorigins.win/raw?url={enc}',
         f'https://api.codetabs.com/v1/proxy?quest={enc}',
@@ -62,7 +65,8 @@ def fetch(url, retries=2):
     for relay in relays:
         for _ in range(retries):
             text = _try_get(relay, UA_LIST[0], timeout=20)
-            if text is not None: return text
+            if text is not None:
+                return text
             time.sleep(1)
     return None
 
@@ -74,40 +78,55 @@ EXCLUDE_LINE_KEYWORDS = ['注册', '试用', '邀请', '购买', '续费', '官�
                          '机场', '下载', '教程', '客服', 'banner', '广告']
 SUB_KEYWORDS = ['订阅', 'subscription']
 
-def clean_url(u): return u.strip().rstrip('.,)!]\'"')
+def clean_url(u):
+    return u.strip().rstrip('.,)!]\'"')
 
 def is_bad_url(u):
     low = u.lower()
     return any(d in low for d in EXCLUDE_DOMAINS) or low.endswith(EXCLUDE_EXT)
 
 def extract_sub_urls(text):
+    """只提取真正的订阅链接，过滤注册/推广/图片等杂链"""
     sub_urls = set()
-    for block in re.findall(r'```[\s\S]*?```', text):          # ① 代码块内
+
+    # ① 代码块 ``` 内的链接
+    for block in re.findall(r'```[\s\S]*?```', text):
         for u in re.findall(r'https?://[^\s<>"\']+', block):
             u = clean_url(u)
-            if u and not is_bad_url(u): sub_urls.add(u)
-    lines = text.split('\n')                                    # ② “订阅”关键词附近
+            if u and not is_bad_url(u):
+                sub_urls.add(u)
+
+    # ② “订阅”关键词 同行 / 下方4行内 的链接
+    lines = text.split('\n')
     for i, line in enumerate(lines):
         if any(k in line.lower() for k in SUB_KEYWORDS):
             for u in re.findall(r'https?://[^\s<>"\']+', line):
                 u = clean_url(u)
-                if u and not is_bad_url(u): sub_urls.add(u)
+                if u and not is_bad_url(u):
+                    sub_urls.add(u)
             for nxt in lines[i + 1: i + 5]:
                 nxt = nxt.strip()
-                if nxt.startswith('#') or nxt.startswith('>') or nxt.startswith('!['): break
-                if any(k in nxt for k in EXCLUDE_LINE_KEYWORDS): continue
+                if nxt.startswith('#') or nxt.startswith('>') or nxt.startswith('!['):
+                    break
+                if any(k in nxt for k in EXCLUDE_LINE_KEYWORDS):
+                    continue
                 for u in re.findall(r'https?://[^\s<>"\']+', nxt):
                     u = clean_url(u)
-                    if u and not is_bad_url(u): sub_urls.add(u)
-    if not sub_urls:                                            # ③ 兜底
+                    if u and not is_bad_url(u):
+                        sub_urls.add(u)
+
+    # ③ 兜底：逐行扫描但跳过推广行
+    if not sub_urls:
         for line in lines:
-            if any(k in line for k in EXCLUDE_LINE_KEYWORDS): continue
+            if any(k in line for k in EXCLUDE_LINE_KEYWORDS):
+                continue
             for u in re.findall(r'https?://[^\s<>"\']+', line):
                 u = clean_url(u)
-                if u and not is_bad_url(u): sub_urls.add(u)
+                if u and not is_bad_url(u):
+                    sub_urls.add(u)
     return sub_urls
 
-# ======================= 节点协议解析 =======================
+# ======================= 节点协议解析（URI -> Clash） =======================
 def decode_base64(s):
     try:
         s += '=' * (-len(s) % 4)
@@ -124,7 +143,8 @@ def parse_vmess(link):
                 'tls': j.get('tls') == 'tls', 'network': j.get('net', 'tcp'),
                 'ws-opts': ({'path': j.get('path', '/'), 'headers': {'Host': j.get('host', '')}}
                             if j.get('net') == 'ws' else None), 'skip-cert-verify': True}
-    except Exception: return None
+    except Exception:
+        return None
 
 def parse_vless(link):
     try:
@@ -142,14 +162,18 @@ def parse_vless(link):
         node = {'name': name, 'type': 'vless', 'server': server, 'port': port, 'uuid': uuid,
                 'udp': True, 'network': net, 'tls': sec in ('tls', 'reality'), 'skip-cert-verify': True}
         flow = urllib.parse.unquote(q.get('flow', [''])[0])
-        if flow: node['flow'] = flow
+        if flow:
+            node['flow'] = flow
         if sec == 'reality':
             node['reality-opts'] = {'public-key': q.get('pbk', [''])[0], 'short-id': q.get('sid', [''])[0]}
             node['servername'] = sni
-        if net == 'ws': node['ws-opts'] = {'path': path, 'headers': {'Host': host}}
-        elif net == 'grpc': node['grpc-opts'] = {'grpc-service-name': q.get('serviceName', [''])[0]}
+        if net == 'ws':
+            node['ws-opts'] = {'path': path, 'headers': {'Host': host}}
+        elif net == 'grpc':
+            node['grpc-opts'] = {'grpc-service-name': q.get('serviceName', [''])[0]}
         return node
-    except Exception: return None
+    except Exception:
+        return None
 
 def parse_trojan(link):
     try:
@@ -162,13 +186,16 @@ def parse_trojan(link):
         sni, net = urllib.parse.unquote(q.get('sni', [''])[0]), q.get('type', ['tcp'])[0]
         node = {'name': name, 'type': 'trojan', 'server': server, 'port': port,
                 'password': main.split('@')[0], 'udp': True, 'skip-cert-verify': True, 'network': net}
-        if sni: node['sni'] = sni
+        if sni:
+            node['sni'] = sni
         if net == 'ws':
             node['ws-opts'] = {'path': urllib.parse.unquote(q.get('path', ['/'])[0]),
                                'headers': {'Host': urllib.parse.unquote(q.get('host', [''])[0])}}
-        elif net == 'grpc': node['grpc-opts'] = {'grpc-service-name': q.get('serviceName', [''])[0]}
+        elif net == 'grpc':
+            node['grpc-opts'] = {'grpc-service-name': q.get('serviceName', [''])[0]}
         return node
-    except Exception: return None
+    except Exception:
+        return None
 
 def parse_ss(link):
     try:
@@ -186,7 +213,8 @@ def parse_ss(link):
         server, port = ap.split(':')[0], int(ap.split(':')[1])
         return {'name': name, 'type': 'ss', 'server': server, 'port': port,
                 'cipher': method, 'password': password, 'udp': True}
-    except Exception: return None
+    except Exception:
+        return None
 
 def parse_node(link):
     if link.startswith('vmess://'):  return parse_vmess(link)
@@ -195,6 +223,64 @@ def parse_node(link):
     if link.startswith('ss://'):     return parse_ss(link)
     return None
 
+# ======================= 反向转换（Clash -> URI） =======================
+def clash_to_uri(p):
+    """把 Clash 代理字典反向转成 vmess/vless/trojan/ss 分享链接"""
+    try:
+        t, server, port = p.get('type'), p.get('server'), p.get('port')
+        name = urllib.parse.quote(p.get('name', ''))
+        ws = p.get('ws-opts') or {}
+        ws_path, ws_host = ws.get('path', '/'), (ws.get('headers') or {}).get('Host', '')
+
+        if t == 'vmess':
+            obj = {'v': '2', 'ps': p.get('name', ''), 'add': server, 'port': str(port),
+                   'id': p.get('uuid'), 'aid': str(p.get('alterId', 0)), 'type': 'auto',
+                   'net': p.get('network', 'tcp'), 'tls': 'tls' if p.get('tls') else '',
+                   'sni': p.get('servername') or ws_host}
+            if p.get('network') == 'ws':
+                obj['path'], obj['host'] = ws_path, ws_host
+            elif p.get('network') == 'grpc':
+                obj['path'] = (p.get('grpc-opts') or {}).get('grpc-service-name', '')
+            return 'vmess://' + base64.b64encode(json.dumps(obj).encode()).decode()
+
+        if t == 'vless':
+            params = {'type': p.get('network', 'tcp'),
+                      'security': 'tls' if p.get('tls') else 'none'}
+            if p.get('flow'):
+                params['flow'] = p.get('flow')
+            if p.get('servername') or ws_host:
+                params['sni'] = p.get('servername') or ws_host
+            if p.get('network') == 'ws':
+                params['path'], params['host'] = ws_path, ws_host
+            elif p.get('network') == 'grpc':
+                params['serviceName'] = (p.get('grpc-opts') or {}).get('grpc-service-name', '')
+            if p.get('reality-opts'):
+                params.update({'security': 'reality',
+                               'pbk': p['reality-opts'].get('public-key', ''),
+                               'sid': p['reality-opts'].get('short-id', '')})
+            return f"vless://{p.get('uuid')}@{server}:{port}?{urllib.parse.urlencode(params)}#{name}"
+
+        if t == 'trojan':
+            params = {}
+            if p.get('sni'):
+                params['sni'] = p.get('sni')
+            if p.get('network') == 'ws':
+                params.update({'type': 'ws', 'path': ws_path, 'host': ws_host})
+            elif p.get('network') == 'grpc':
+                params.update({'type': 'grpc', 'serviceName':
+                               (p.get('grpc-opts') or {}).get('grpc-service-name', '')})
+            pwd = urllib.parse.quote(p.get('password', ''), safe='')
+            q = urllib.parse.urlencode(params)
+            return f"trojan://{pwd}@{server}:{port}?{q}#{name}" if q else f"trojan://{pwd}@{server}:{port}#{name}"
+
+        if t == 'ss':
+            b64 = base64.b64encode(f"{p.get('cipher')}:{p.get('password')}".encode()).decode()
+            return f"ss://{b64}@{server}:{port}#{name}"
+    except Exception:
+        return None
+    return None
+
+# ======================= Clash 配置生成 =======================
 def generate_clash_config(proxies):
     names = [p['name'] for p in proxies]
     return {
@@ -217,7 +303,8 @@ def main():
     print("开始爬取任务...")
     sub_urls, direct_nodes = set(), []
 
-    for url in README_URLS:  # README 在 raw.githubusercontent，不封锁，直连
+    # 1) 读取 README，精准提取订阅链接（raw.githubusercontent 不封锁，直连）
+    for url in README_URLS:
         try:
             r = requests.get(url, headers={'User-Agent': UA_LIST[0]}, timeout=15)
             r.raise_for_status()
@@ -232,38 +319,56 @@ def main():
     v2ray_nodes = list(set(direct_nodes))
     clash_proxies = []
 
-    for url in sub_urls:  # 订阅链接走多渠道抓取
+    # 2) 多渠道抓取每个订阅链接
+    for url in sub_urls:
         content = fetch(url)
         if content is None:
             print(f"[SUB] {url} -> 所有通道均失败(源站保护或宕机)")
             continue
         content = content.strip()
+
+        # 源站直接返回 Clash YAML
         if 'proxies:' in content or 'port:' in content:
             try:
                 data = yaml.safe_load(content)
-                if data and data.get('proxies'):
+                if isinstance(data, dict) and data.get('proxies'):
                     print(f"[SUB] {url} -> Clash YAML, {len(data['proxies'])} 个节点")
                     clash_proxies.extend(data['proxies'])
                     continue
             except Exception:
                 pass
+
+        # Base64 / 明文节点
         decoded = decode_base64(content)
         matches = re.findall(r'(vmess|vless|trojan|ss|ssr)://[^\s<>"\'，]+', decoded)
         matches += re.findall(r'(vmess|vless|trojan|ss|ssr)://[^\s<>"\'，]+', content)
         print(f"[SUB] {url} -> 提取到 {len(matches)} 条节点链接")
         for m in matches:
             m = m.rstrip('.,)!]')
-            if m not in v2ray_nodes: v2ray_nodes.append(m)
+            if m not in v2ray_nodes:
+                v2ray_nodes.append(m)
 
+    # 3) V2Ray 节点 -> Clash 代理，并记录来源
+    parsed_from_uri = set()
     for node in v2ray_nodes:
         p = parse_node(node)
-        if p: clash_proxies.append(p)
+        if p:
+            clash_proxies.append(p)
+            parsed_from_uri.add(p['name'])
     clash_proxies = list({p['name']: p for p in clash_proxies if p.get('name')}.values())
+
+    # 4) 只有 YAML 的节点反向生成 v2ray 分享链接，补齐 v2ray.txt
+    for p in clash_proxies:
+        if p['name'] not in parsed_from_uri:
+            uri = clash_to_uri(p)
+            if uri and uri not in v2ray_nodes:
+                v2ray_nodes.append(uri)
 
     if not clash_proxies and not v2ray_nodes:
         print("本次未发现任何节点，不更新文件，保留上一版订阅。")
         return
 
+    # 5) 输出订阅文件
     if v2ray_nodes:
         with open('v2ray.txt', 'w') as f:
             f.write(base64.b64encode('\n'.join(v2ray_nodes).encode()).decode())
