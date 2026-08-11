@@ -1,170 +1,233 @@
 import requests
-from bs4 import BeautifulSoup
+import re
 import base64
-import yaml
 import json
+import urllib.parse
+import yaml
 import os
-from github3 import login
+from datetime import datetime
 
-# 配置信息
-TARGET_REPOS = [
-    'tolinkshare2/tolinkshare2.github.io',
-    'abshare3/abshare3.github.io',
-    'mkshare3/mkshare3.github.io',
-    'toshare5/toshare5.github.io'
+# 目标 README 链接
+README_URLS = [
+    "https://raw.githubusercontent.com/toshare5/toshare5.github.io/main/README.md",
+    "https://raw.githubusercontent.com/abshare3/abshare3.github.io/main/README.md",
+    "https://raw.githubusercontent.com/mkshare3/mkshare3.github.io/main/README.md",
+    "https://raw.githubusercontent.com/tolinkshare2/tolinkshare2.github.io/main/README.md"
 ]
-GITHUB_TOKEN = '你的GitHub个人访问令牌'  # 具有repo权限
-OUTPUT_DIR = 'subscriptions'
-CLASH_OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'clash_subscription.yaml')
-V2RAY_OUTPUT_FILE = os.path.join(OUTPUT_DIR, 'v2ray_subscription.json')
 
-def get_readme_content(owner, repo):
-    """通过GitHub API获取仓库的README.md内容"""
-    headers = {'Authorization': f'token {GITHUB_TOKEN}'}
-    url = f'https://api.github.com/repos/{owner}/{repo}/readme'
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        # README内容通常是Base64编码的
-        content_base64 = response.json()['content']
-        content = base64.b64decode(content_base64).decode('utf-8')
-        return content
-    else:
-        print(f"Failed to fetch README for {owner}/{repo}: {response.status_code}")
-        return None
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+}
 
-def extract_subscription_links(readme_content):
-    """从README内容中提取订阅链接"""
-    soup = BeautifulSoup(readme_content, 'html.parser')
-    # 这里需要根据实际README的HTML结构调整选择器
-    # 示例是寻找所有code标签或pre标签中包含https的链接
-    links = []
-    for code in soup.find_all(['code', 'pre']):
-        text = code.get_text()
-        if 'https://' in text and '.xyz' in text:  # 这是一个简化的判断条件
-            # 清理文本，提取URL
-            url = text.strip()
-            if url.startswith('https://'):
-                links.append(url)
-    return links
+def decode_base64(s):
+    try:
+        s += '=' * (-len(s) % 4)
+        return base64.b64decode(s).decode('utf-8')
+    except:
+        return s
 
-def convert_to_clash_subscription(raw_links):
-    """将原始链接转换为Clash订阅格式（示例）"""
-    # 注意：这是一个非常简化的示例。实际的Clash配置文件结构很复杂。
-    # 你需要解析原始订阅（可能是Base64编码的SS/V2Ray链接），提取节点信息，
-    # 然后构建完整的Clash YAML配置。这里只是生成一个包含所有链接的列表。
-    clash_config = {
-        'proxies': [],
-        'proxy-groups': [
-            {
-                'name': 'Proxy',
-                'type': 'select',
-                'proxies': ['AUTO', 'DIRECT'] + [f"proxy_{i}" for i in range(len(raw_links))]
-            }
-        ],
-        'rules': ['DOMAIN-SUFFIX,google.com,Proxy', 'DOMAIN-SUFFIX,github.com,DIRECT', 'GEOIP,CN,DIRECT', 'MATCH,Proxy']
-    }
-    
-    for i, link in enumerate(raw_links):
-        # 在实际应用中，这里需要解析link以获取节点信息（名称、类型、地址、端口等）
-        # 例如：ss://base64(info) -> 解码后获取服务器地址、端口、密码、加密方法
-        # 这部分解析逻辑非常复杂，通常需要专门的库，如 shadowsocks、v2ray-core 等。
-        # 这里我们用一个占位符表示一个代理节点
-        clash_config['proxies'].append({
-            'name': f"proxy_{i}",
-            'type': 'ss',  # 假设是Shadowsocks，实际需要判断
-            'server': 'example.com',  # 从link中解析
-            'port': 8388,  # 从link中解析
-            'cipher': 'aes-256-gcm',  # 从link中解析
-            'password': 'password'  # 从link中解析
-        })
-    
-    return yaml.dump(clash_config, default_flow_style=False)
-
-def convert_to_v2ray_subscription(raw_links):
-    """将原始链接转换为V2Ray订阅格式（示例）"""
-    # 同样，这是一个极度简化的示例。V2Ray配置是一个JSON结构。
-    # 你需要解析原始链接，构建 outbounds 和 routing 等核心配置。
-    v2ray_config = {
-        'log': {'loglevel': 'warning'},
-        'inbounds': [{'port': 10808, 'protocol': 'socks', 'settings': {'udp': True}}],
-        'outbounds': [],
-        'routing': {
-            'domainStrategy': 'IPIfNonMatch',
-            'rules': [
-                {'type': 'field', 'outboundTag': 'direct', 'domain': ['geosite:cn']},
-                {'type': 'field', 'outboundTag': 'proxy', 'network': 'tcp,udp'}
-            ]
+def parse_vmess(link):
+    try:
+        b64 = link[8:]
+        j = json.loads(decode_base64(b64))
+        return {
+            'name': j.get('ps', j.get('add', 'VMess Node')),
+            'type': 'vmess',
+            'server': j.get('add'),
+            'port': int(j.get('port')),
+            'uuid': j.get('id'),
+            'alterId': int(j.get('aid', 0)),
+            'cipher': 'auto',
+            'udp': True,
+            'tls': j.get('tls') == 'tls',
+            'network': j.get('net', 'tcp'),
+            'ws-opts': {'path': j.get('path', '/'), 'headers': {'Host': j.get('host', '')}} if j.get('net') == 'ws' else None,
+            'skip-cert-verify': True
         }
-    }
-    
-    for link in raw_links:
-        # 解析link以获取V2Ray节点信息（vmess://... 等）
-        # 这里只是添加一个占位符的 outbound
-        v2ray_config['outbounds'].append({
-            'protocol': 'vmess',  # 假设是VMess
-            'settings': {'vnext': [{'address': 'example.com', 'port': 443, 'users': [{'id': 'uuid', 'alterId': 0}]}]},
-            'tag': 'proxy'  # 所有节点共享同一个tag，实际需要更复杂的逻辑
-        })
-    
-    return json.dumps(v2ray_config, indent=2)
+    except: return None
 
-def update_github_repo(owner, repo, file_path, content, message):
-    """通过GitHub API更新仓库中的文件"""
-    gh = login(token=GITHUB_TOKEN)
-    repository = gh.repository(owner, repo)
-    branch = 'main'  # 或 'master'
-    
-    # 获取文件的当前SHA（如果存在）
-    contents = repository.contents(file_path, ref=branch)
-    sha = contents.sha if contents else None
-    
-    # 提交新内容
-    repository.create_file(
-        path=file_path,
-        message=message,
-        content=content,
-        branch=branch,
-        sha=sha
-    )
-    print(f"Successfully updated {file_path} in {owner}/{repo}")
+def parse_vless(link):
+    try:
+        link = link[8:]
+        name = urllib.parse.unquote(link.split('#')[1]) if '#' in link else 'VLESS Node'
+        main = link.split('#')[0]
+        uuid = main.split('@')[0]
+        addr_port = main.split('@')[1].split('?')[0]
+        server = addr_port.split(':')[0]
+        port = int(addr_port.split(':')[1])
+        
+        query = urllib.parse.parse_qs(main.split('?')[1] if '?' in main else '')
+        security = query.get('security', ['none'])[0]
+        network = query.get('type', ['tcp'])[0]
+        path = urllib.parse.unquote(query.get('path', ['/'])[0])
+        host = urllib.parse.unquote(query.get('host', [''])[0])
+        sni = urllib.parse.unquote(query.get('sni', [''])[0])
+        flow = urllib.parse.unquote(query.get('flow', [''])[0])
+        
+        node = {
+            'name': name,
+            'type': 'vless',
+            'server': server,
+            'port': port,
+            'uuid': uuid,
+            'udp': True,
+            'network': network,
+            'tls': security in ['tls', 'reality'],
+            'skip-cert-verify': True
+        }
+        if flow: node['flow'] = flow
+        if security == 'reality':
+            node['reality-opts'] = {'public-key': query.get('pbk', [''])[0], 'short-id': query.get('sid', [''])[0]}
+            node['servername'] = sni
+        if network == 'ws': node['ws-opts'] = {'path': path, 'headers': {'Host': host}}
+        elif network == 'grpc': node['grpc-opts'] = {'grpc-service-name': query.get('serviceName', [''])[0]}
+        return node
+    except: return None
+
+def parse_trojan(link):
+    try:
+        link = link[9:]
+        name = urllib.parse.unquote(link.split('#')[1]) if '#' in link else 'Trojan Node'
+        main = link.split('#')[0]
+        password = main.split('@')[0]
+        addr_port = main.split('@')[1].split('?')[0]
+        server = addr_port.split(':')[0]
+        port = int(addr_port.split(':')[1])
+        
+        query = urllib.parse.parse_qs(main.split('?')[1] if '?' in main else '')
+        sni = urllib.parse.unquote(query.get('sni', [''])[0])
+        network = query.get('type', ['tcp'])[0]
+        
+        node = {
+            'name': name, 'type': 'trojan', 'server': server, 'port': port,
+            'password': password, 'udp': True, 'skip-cert-verify': True, 'network': network
+        }
+        if sni: node['sni'] = sni
+        if network == 'ws':
+            path = urllib.parse.unquote(query.get('path', ['/'])[0])
+            host = urllib.parse.unquote(query.get('host', [''])[0])
+            node['ws-opts'] = {'path': path, 'headers': {'Host': host}}
+        elif network == 'grpc': node['grpc-opts'] = {'grpc-service-name': query.get('serviceName', [''])[0]}
+        return node
+    except: return None
+
+def parse_ss(link):
+    try:
+        link = link[5:]
+        name = urllib.parse.unquote(link.split('#')[1]) if '#' in link else 'SS Node'
+        main = link.split('#')[0]
+        if '?' in main: main = main.split('?', 1)[0]
+            
+        if '@' in main:
+            b64, addr_port = main.split('@')
+            decoded = decode_base64(b64)
+            if ':' in decoded: method, password = decoded.split(':', 1)
+            else: method, password = decoded, ''
+            server = addr_port.split(':')[0]
+            port = int(addr_port.split(':')[1])
+        else:
+            decoded = decode_base64(main)
+            method, password = decoded.split('@')[0].split(':', 1)
+            addr_port = decoded.split('@')[1]
+            server = addr_port.split(':')[0]
+            port = int(addr_port.split(':')[1])
+            
+        return {'name': name, 'type': 'ss', 'server': server, 'port': port, 'cipher': method, 'password': password, 'udp': True}
+    except: return None
+
+def parse_node(link):
+    if link.startswith('vmess://'): return parse_vmess(link)
+    elif link.startswith('vless://'): return parse_vless(link)
+    elif link.startswith('trojan://'): return parse_trojan(link)
+    elif link.startswith('ss://'): return parse_ss(link)
+    return None
+
+def generate_clash_config(proxies):
+    proxy_names = [p['name'] for p in proxies]
+    return {
+        'port': 7890, 'socks-port': 7891, 'allow-lan': False, 'mode': 'Rule',
+        'log-level': 'info', 'external-controller': '127.0.0.1:9090',
+        'dns': {
+            'enabled': True, 'listen': '0.0.0.0:53', 'ipv6': False,
+            'default-nameserver': ['223.5.5.5', '114.114.114.114'],
+            'enhanced-mode': 'fake-ip', 'fake-ip-range': '198.18.0.1/16',
+            'use-hosts': True,
+            'nameserver': ['https://doh.pub/dns-query', 'https://dns.alidns.com/dns-query'],
+            'fallback': ['https://doh.dns.sb/dns-query', 'https://dns.cloudflare.com/dns-query'],
+            'fallback-filter': {'geoip': True, 'ipcidr': ['240.0.0.0/4', '0.0.0.0/32']}
+        },
+        'proxies': proxies,
+        'proxy-groups': [
+            {'name': '🚀 节点选择', 'type': 'select', 'proxies': proxy_names + ['DIRECT']},
+            {'name': '🎯 全球直连', 'type': 'select', 'proxies': ['DIRECT', '🚀 节点选择']}
+        ],
+        'rules': ['GEOIP,CN,🎯 全球直连', 'MATCH,🚀 节点选择']
+    }
 
 def main():
-    # 创建输出目录
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    print("开始爬取任务...")
+    sub_urls, direct_nodes = set(), []
     
-    all_raw_links = []
-    
-    # 1. 爬取所有目标仓库的README并提取链接
-    for repo_full_name in TARGET_REPOS:
-        owner, repo = repo_full_name.split('/')
-        readme = get_readme_content(owner, repo)
-        if readme:
-            links = extract_subscription_links(readme)
-            all_raw_links.extend(links)
-            print(f"Found {len(links)} links in {owner}/{repo}")
-    
+    # 1. 提取 README 中的链接和直接暴露的节点
+    for url in README_URLS:
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=15)
+            if r.status_code == 200:
+                urls = re.findall(r'https?://[^\s<>"\']+', r.text)
+                for u in urls:
+                    u = u.strip().rstrip('.,)!]')
+                    if not any(x in u for x in ['github.com', 'githubusercontent.com', '.jpg', '.png', '.jpeg', '.gif']):
+                        sub_urls.add(u)
+                direct_nodes.extend(re.findall(r'(vmess|vless|trojan|ss|ssr)://[^\s<>"\'，]+', r.text))
+        except Exception as e: print(f"读取 README 出错 {url}: {e}")
+
+    v2ray_nodes = [n.rstrip('.,)!]') for n in list(set(direct_nodes))]
+    clash_proxies = []
+
+    # 2. 遍历获取到的订阅链接
+    for url in list(sub_urls):
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=15)
+            if r.status_code == 200:
+                content = r.text.strip()
+                # 判断是否直接返回了 Clash YAML
+                if 'proxies:' in content or 'port:' in content:
+                    try:
+                        data = yaml.safe_load(content)
+                        if data and 'proxies' in data:
+                            clash_proxies.extend(data['proxies'])
+                            continue
+                    except: pass
+                
+                # Base64 解码并提取节点
+                decoded = decode_base64(content)
+                matches = re.findall(r'(vmess|vless|trojan|ss|ssr)://[^\s<>"\'，]+', decoded)
+                matches.extend(re.findall(r'(vmess|vless|trojan|ss|ssr)://[^\s<>"\'，]+', content))
+                for match in matches:
+                    clean_match = match.rstrip('.,)!]')
+                    if clean_match not in v2ray_nodes: v2ray_nodes.append(clean_match)
+        except Exception as e: print(f"抓取订阅出错 {url}: {e}")
+
+    # 3. 解析节点生成 Clash 配置
+    v2ray_nodes = list(set(v2ray_nodes))
+    for node in v2ray_nodes:
+        parsed = parse_node(node)
+        if parsed: clash_proxies.append(parsed)
+
     # 去重
-    all_raw_links = list(set(all_raw_links))
-    print(f"Total unique raw links: {len(all_raw_links)}")
-    
-    if not all_raw_links:
-        print("No links found, exiting.")
-        return
-    
-    # 2. 转换为Clash和V2Ray订阅格式
-    clash_yaml = convert_to_clash_subscription(all_raw_links)
-    v2ray_json = convert_to_v2ray_subscription(all_raw_links)
-    
-    # 3. 将转换后的内容写入本地文件（用于调试）
-    with open(CLASH_OUTPUT_FILE, 'w') as f:
-        f.write(clash_yaml)
-    with open(V2RAY_OUTPUT_FILE, 'w') as f:
-        f.write(v2ray_json)
-    
-    # 4. 更新GitHub仓库中的订阅文件
-    # 将你的GitHub仓库名和所有者名替换成你自己的
-    update_github_repo('你的GitHub用户名', '你的仓库名', CLASH_OUTPUT_FILE, clash_yaml, 'Update Clash subscription')
-    update_github_repo('你的GitHub用户名', '你的仓库名', V2RAY_OUTPUT_FILE, v2ray_json, 'Update V2Ray subscription')
+    unique_proxies = {p.get('name', ''): p for p in clash_proxies if p.get('name')}
+    clash_proxies = list(unique_proxies.values())
+
+    if not clash_proxies: print("未发现可用节点，终止生成。") ; return
+
+    # 4. 保存输出文件
+    with open('v2ray.txt', 'w') as f:
+        f.write(base64.b64encode('\n'.join(v2ray_nodes).encode('utf-8')).decode('utf-8'))
+        
+    with open('clash.yaml', 'w', encoding='utf-8') as f:
+        yaml.dump(generate_clash_config(clash_proxies), f, allow_unicode=True, sort_keys=False)
+        
+    print(f"成功！提取并解析了 {len(clash_proxies)} 个节点。")
 
 if __name__ == '__main__':
     main()
