@@ -21,77 +21,77 @@ proxies:
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 提醒您
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 您的Clash客户端
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 版本已过时
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 请访问我们的
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 官方网站
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 根据您的
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 设备和系统
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 下载新版本的客户端
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 客户端更新成功后
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 - name: 请重新更新订阅链接
   type: ss
   server: 127.0.0.1
   port: '1080'
   cipher: aes-128-gcm
-  password: d67f4002-cb43-4a0c-bccd-448d0425f04d
+  password: 9ab633eb-3d08-4960-9b1b-c272ef197f12
   udp: true
 proxy-groups:
 - name: 🚀 节点选择
