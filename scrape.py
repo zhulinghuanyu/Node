@@ -6,6 +6,7 @@ import urllib.parse
 import yaml
 import os
 import time
+from datetime import datetime, timezone, timedelta
 
 # ======================= 配置 =======================
 SOURCES_FILE = 'sources.txt'   # 来源清单，一行一个 URL
@@ -15,6 +16,11 @@ DEFAULT_SOURCES = [  # sources.txt 不存在时的兜底列表
     "https://raw.githubusercontent.com/abshare3/abshare3.github.io/main/README.md",
     "https://raw.githubusercontent.com/mkshare3/mkshare3.github.io/main/README.md",
     "https://raw.githubusercontent.com/tolinkshare2/tolinkshare2.github.io/main/README.md",
+]
+
+UA_LIST = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'clash-verge/v1.7.3', 'v2rayN/6.45', 'Shadowrocket/2.2.44', 'Quantumult/601',
 ]
 
 def load_sources():
@@ -29,11 +35,6 @@ def load_sources():
     except FileNotFoundError:
         pass
     return urls or DEFAULT_SOURCES
-
-UA_LIST = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'clash-verge/v1.7.3', 'v2rayN/6.45', 'Shadowrocket/2.2.44', 'Quantumult/601',
-]
 
 # ======================= 抗封锁抓取 =======================
 def is_cf_block(text):
@@ -313,13 +314,34 @@ def generate_clash_config(proxies):
         'rules': ['GEOIP,CN,🎯 全球直连', 'MATCH,🚀 节点选择'],
     }
 
+# ======================= README 自动刷新 =======================
+def update_readme(v2_count, clash_count):
+    """刷新 README 中 AUTO-INFO 区块的更新时间与节点数"""
+    try:
+        with open('README.md', encoding='utf-8') as f:
+            text = f.read()
+        now = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')
+        block = (f"- 🕒 最后更新：{now}（北京时间）\n"
+                 f"- 📦 节点数量：Clash {clash_count} 个 / V2Ray {v2_count} 条")
+        new_text, n = re.subn(
+            r'<!-- AUTO-INFO START -->.*?<!-- AUTO-INFO END -->',
+            lambda m: f'<!-- AUTO-INFO START -->\n{block}\n<!-- AUTO-INFO END -->',
+            text, flags=re.S)
+        if n == 0:  # 没有标记就追加到末尾
+            new_text = text + f'\n<!-- AUTO-INFO START -->\n{block}\n<!-- AUTO-INFO END -->\n'
+        with open('README.md', 'w', encoding='utf-8') as f:
+            f.write(new_text)
+        print("README 统计信息已刷新。")
+    except Exception as e:
+        print(f"更新 README 失败：{e}")
+
 # ======================= 主流程 =======================
 def main():
     print("开始爬取任务...")
     sub_urls, direct_nodes = set(), []
 
-    # 1) 读取 README，精准提取订阅链接（raw.githubusercontent 不封锁，直连）
-     for url in load_sources():
+    # 1) 读取来源页面，精准提取订阅链接
+    for url in load_sources():
         try:
             r = requests.get(url, headers={'User-Agent': UA_LIST[0]}, timeout=15)
             r.raise_for_status()
@@ -329,7 +351,7 @@ def main():
             direct_nodes.extend(m.rstrip('.,)!]') for m in
                                 re.findall(r'(vmess|vless|trojan|ss|ssr)://[^\s<>"\'，]+', r.text))
         except Exception as e:
-            print(f"读取 README 出错 {url}: {e}")
+            print(f"读取来源出错 {url}: {e}")
 
     v2ray_nodes = list(set(direct_nodes))
     clash_proxies = []
@@ -390,6 +412,9 @@ def main():
     if clash_proxies:
         with open('clash.yaml', 'w', encoding='utf-8') as f:
             yaml.dump(generate_clash_config(clash_proxies), f, allow_unicode=True, sort_keys=False)
+
+    # 6) 刷新 README 统计信息
+    update_readme(len(v2ray_nodes), len(clash_proxies))
     print(f"完成！v2ray 节点 {len(v2ray_nodes)} 条，clash 节点 {len(clash_proxies)} 个。")
 
 if __name__ == '__main__':
