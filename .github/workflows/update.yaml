@@ -2,40 +2,47 @@ name: Auto Crawl and Update Subscriptions
 
 on:
   schedule:
-    # 每 6 小时运行一次 (UTC 时间)
     - cron: '0 */6 * * *'
-  workflow_dispatch: # 允许手动触发
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
-    # 授予 Action 写入仓库文件的权限
     permissions:
       contents: write
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install requests pyyaml
-        
+        pip install requests pyyaml pysocks
+
     - name: Run crawler script
-      run: python scrape.py
-      
+      run: python crawl.py
+      env:
+        PROXY_URL: ${{ secrets.PROXY_URL }}   # 可选，见下方说明
+
     - name: Commit and push changes
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        git add v2ray.txt clash.yaml
-        # 只有文件发生变化时才提交
-        git diff --staged --quiet || git commit -m "Auto update subscriptions - $(date +'%Y-%m-%d %H:%M:%S')"
-        git push
+        if [ -f v2ray.txt ] || [ -f clash.yaml ]; then
+          git add v2ray.txt 2>/dev/null || true
+          git add clash.yaml 2>/dev/null || true
+          if ! git diff --staged --quiet; then
+            git commit -m "Auto update subscriptions - $(date +'%Y-%m-%d %H:%M:%S')"
+            git push
+          else
+            echo "订阅内容无变化，跳过提交。"
+          fi
+        else
+          echo "本次未生成订阅文件，保留仓库中上一版订阅。"
+        fi
