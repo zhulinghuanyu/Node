@@ -1,0 +1,35 @@
+name: Update Proxy Subscriptions
+
+on:
+  schedule:
+    # 每天 UTC 00:00、08:00、16:00 各跑一次（北京时间 08:00、16:00、00:00）
+    - cron: '0 0,8,16 * * *'
+  workflow_dispatch:   # 允许手动触发
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run crawler
+        run: python crawl.py
+
+      - name: Commit & Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add output/
+          git diff --quiet && git diff --staged --quiet || (
+            git commit -m "chore: update subscriptions $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push
+          )
