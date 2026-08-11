@@ -37,6 +37,7 @@ jobs:
         if [ -f v2ray.txt ] || [ -f clash.yaml ]; then
           git add v2ray.txt 2>/dev/null || true
           git add clash.yaml 2>/dev/null || true
+          git add README.md 2>/dev/null || true
           if ! git diff --staged --quiet; then
             git commit -m "Auto update subscriptions - $(date +'%Y-%m-%d %H:%M:%S')"
             git push
