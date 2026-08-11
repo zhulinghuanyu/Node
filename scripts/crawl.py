@@ -459,40 +459,101 @@ def detect_format(
     return "unknown"
 
 
-def extract_node_links(
-    content: bytes,
-) -> list[str]:
+def normalize_node_text(text: str) -> str:
     """
-    Extract standard node URI lines from:
-      - plain text
-      - Base64
+    Normalize common subscription text before extracting node URIs.
     """
 
-    text = content.decode(
+    text = text.replace("\ufeff", "")
+    text = text.replace("\r\n", "\n")
+    text = text.replace("\r", "\n")
+
+    # Some providers return percent-encoded node links.
+    try:
+        from urllib.parse import unquote
+        decoded = unquote(text)
+        if any(
+            scheme in decoded
+            for scheme in NODE_SCHEMES
+        ):
+            text = decoded
+    except Exception:
+        pass
+
+    return text.strip()
+
+
+def extract_node_links(content: bytes) -> list[str]:
+    """
+    Extract node URI lines from:
+      - plain text
+      - Base64 subscription
+      - subconverter V2Ray output
+
+    The old implementation could miss valid output when the response
+    contained surrounding whitespace/BOM or slightly different Base64
+    formatting.
+    """
+
+    raw_text = content.decode(
         "utf-8",
         errors="ignore",
-    ).strip()
-
-    if not text:
-        return []
-
-    decoded = decode_base64_text(
-        text
     )
 
-    candidates = []
+    candidates = [
+        normalize_node_text(raw_text)
+    ]
 
-    if decoded:
-        candidates.append(decoded)
+    # Try normal Base64 and URL-safe Base64.
+    compact = re.sub(
+        r"\s+",
+        "",
+        raw_text.strip(),
+    )
 
-    candidates.append(text)
+    if compact:
+        try:
+            padded = (
+                compact
+                + "=" * (-len(compact) % 4)
+            )
+
+            decoded = base64.b64decode(
+                padded,
+                altchars=b"-_",
+                validate=False,
+            ).decode(
+                "utf-8",
+                errors="ignore",
+            )
+
+            decoded = normalize_node_text(
+                decoded
+            )
+
+            if decoded:
+                candidates.append(decoded)
+
+        except Exception:
+            pass
 
     nodes = []
 
     for candidate in candidates:
+
         for line in candidate.splitlines():
 
             line = line.strip()
+
+            if not line:
+                continue
+
+            # Remove accidental Markdown list markers.
+            line = re.sub(
+                r"^[-*+]\s+",
+                "",
+                line,
+            ).strip()
 
             if line.startswith(
                 NODE_SCHEMES
@@ -500,6 +561,46 @@ def extract_node_links(
                 nodes.append(line)
 
     return unique(nodes)
+
+
+def is_base64_subscription(text: str) -> bool:
+    """
+    Check whether text is a Base64-encoded node subscription.
+    """
+
+    compact = re.sub(
+        r"\s+",
+        "",
+        text.strip(),
+    )
+
+    if not compact:
+        return False
+
+    try:
+        padded = (
+            compact
+            + "=" * (-len(compact) % 4)
+        )
+
+        decoded = base64.b64decode(
+            padded,
+            altchars=b"-_",
+            validate=False,
+        ).decode(
+            "utf-8",
+            errors="ignore",
+        )
+
+        return bool(
+            extract_node_links(
+                decoded.encode("utf-8")
+            )
+        )
+
+    except Exception:
+        return False
+
 
 
 def make_data_uri(
@@ -854,10 +955,7 @@ def merge_clash_outputs(
     return output, len(merged)
 
 
-def save_nodes(
-    nodes: list[str],
-) -> None:
-
+def save_nodes(nodes: list[str]) -> None:
     raw = "\n".join(nodes)
 
     if raw:
@@ -877,9 +975,117 @@ def save_nodes(
     (
         OUTPUT / "v2ray.txt"
     ).write_text(
-        encoded + "\n",
+        encoded + "\n" if encoded else "",
         encoding="utf-8",
     )
+
+
+def save_v2ray_output(
+    outputs,
+    nodes: list[str],
+) -> None:
+    """
+    Save the actual subconverter V2Ray output.
+
+    v2ray-subconverter.txt:
+        Raw output returned by subconverter. If it is already a
+        Base64 subscription, keep it exactly as returned.
+
+    v2ray.txt:
+        Preferred normalized Base64 subscription built from extracted
+        node URIs. If node extraction finds nothing but subconverter
+        returned valid Base64, fall back to the raw converted output.
+    """
+
+    raw_outputs = []
+
+    for source_url, converted in outputs:
+
+        converted = (
+            converted
+            .replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .strip()
+        )
+
+        if converted:
+            raw_outputs.append(
+                converted
+            )
+
+    raw_combined = ""
+
+    if raw_outputs:
+        # If there are multiple V2Ray conversions, they may each be
+        # Base64 subscriptions. Decode them and merge the node URIs.
+        raw_combined = "\n".join(
+            raw_outputs
+        ) + "\n"
+
+    (
+        OUTPUT / "v2ray-subconverter.txt"
+    ).write_text(
+        raw_combined,
+        encoding="utf-8",
+    )
+
+    if nodes:
+        normalized = "\n".join(nodes) + "\n"
+
+        encoded = base64.b64encode(
+            normalized.encode("utf-8")
+        ).decode("ascii")
+
+        (
+            OUTPUT / "v2ray.txt"
+        ).write_text(
+            encoded + "\n",
+            encoding="utf-8",
+        )
+
+        return
+
+    # Fallback:
+    # If subconverter successfully returned a valid Base64
+    # subscription but our node parser could not extract it,
+    # publish that output instead of creating an empty file.
+    for converted in raw_outputs:
+
+        if is_base64_subscription(
+            converted
+        ):
+            (
+                OUTPUT / "v2ray.txt"
+            ).write_text(
+                converted.strip() + "\n",
+                encoding="utf-8",
+            )
+            return
+
+    # Last fallback: raw V2Ray URI text.
+    for converted in raw_outputs:
+
+        if extract_node_links(
+            converted.encode("utf-8")
+        ):
+            (
+                OUTPUT / "v2ray.txt"
+            ).write_text(
+                base64.b64encode(
+                    converted.encode("utf-8")
+                ).decode("ascii")
+                + "\n",
+                encoding="utf-8",
+            )
+            return
+
+    (
+        OUTPUT / "v2ray.txt"
+    ).write_text(
+        "",
+        encoding="utf-8",
+    )
+
 
 
 def save_sources(
@@ -1105,6 +1311,11 @@ def main() -> None:
         )
     )
 
+    log(
+        f"[INFO] successful V2Ray conversions = "
+        f"{len(v2ray_outputs)}"
+    )
+
     v2ray_nodes = []
 
     for source_url, converted in (
@@ -1183,27 +1394,18 @@ def main() -> None:
         v2ray_nodes + direct_nodes
     )
 
+    # Save normalized node list and V2Ray Base64 subscription.
     save_nodes(
         all_nodes
     )
 
-    # Also write a v2ray subscription produced
-    # from the merged node URI list.
-    (
-        OUTPUT / "v2ray-subconverter.txt"
-    ).write_text(
-        base64.b64encode(
-            (
-                "\n".join(all_nodes)
-                + (
-                    "\n"
-                    if all_nodes
-                    else ""
-                )
-            ).encode("utf-8")
-        ).decode("ascii")
-        + "\n",
-        encoding="utf-8",
+    # IMPORTANT:
+    # Keep the actual output returned by subconverter. The previous
+    # version accidentally overwrote this file with the already
+    # extracted node list, which could become empty.
+    save_v2ray_output(
+        v2ray_outputs,
+        all_nodes,
     )
 
     write_status(
