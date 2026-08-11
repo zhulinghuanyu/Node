@@ -172,18 +172,189 @@ def save_nodes(nodes):
     (OUTPUT / "v2ray.txt").write_text(encoded + "\n", encoding="utf-8")
 
 
-def convert(target, urls):
+def convert_one(target, url):
+    """
+    Convert ONE remote subscription at a time.
+
+    Doing this instead of putting every URL into one very long `url=`
+    parameter has two advantages:
+      1. one broken source cannot make the whole conversion fail;
+      2. we can identify exactly which source failed.
+    """
+    endpoint = f"{SUBCONVERTER}/sub"
+    params = {
+        "target": target,
+        "url": url,
+    }
+
+    r = requests.get(
+        endpoint,
+        params=params,
+        headers=HEADERS,
+        timeout=CONVERT_TIMEOUT,
+    )
+
+    if not r.ok:
+        body = r.text[:1000].replace("\n", " ")
+        raise RuntimeError(
+            f"HTTP {r.status_code} from subconverter: {body}"
+        )
+
+    if not r.text.strip():
+        raise RuntimeError(
+            f"subconverter returned empty output for {target}"
+        )
+
+    return r.text
+
+
+def decode_v2ray_output(text):
+    """
+    subconverter's v2ray output is normally Base64. Decode it to
+    node URI lines so multiple sources can be safely merged.
+    """
+    raw = text.strip()
+
+    # It may already be plain URI lines depending on the backend/template.
+    if any(raw.startswith(s) for s in NODE_SCHEMES):
+        return [
+            line.strip()
+            for line in raw.splitlines()
+            if line.strip().startswith(NODE_SCHEMES)
+        ]
+
+    compact = re.sub(r"\s+", "", raw)
+    try:
+        padded = compact + "=" * (-len(compact) % 4)
+        decoded = base64.b64decode(
+            padded,
+            validate=False,
+        ).decode("utf-8", errors="ignore")
+
+        return [
+            line.strip()
+            for line in decoded.splitlines()
+            if line.strip().startswith(NODE_SCHEMES)
+        ]
+    except Exception:
+        return []
+
+
+def merge_clash_outputs(outputs):
+    """
+    Merge Clash YAML files produced independently by subconverter.
+
+    The first valid configuration supplies the general Clash settings
+    (port, DNS, rules, rule-providers, etc.). All unique proxies from
+    every successful source are inserted into `proxies`.
+
+    For selectable proxy groups, all merged proxy names are appended so
+    the newly merged nodes are actually usable.
+    """
+    configs = []
+
+    for source_url, raw in outputs:
+        try:
+            data = yaml.safe_load(raw)
+        except Exception as exc:
+            log(f"[WARN] invalid Clash YAML: {source_url} :: {exc}")
+            continue
+
+        if not isinstance(data, dict):
+            log(f"[WARN] Clash output is not a mapping: {source_url}")
+            continue
+
+        proxies = data.get("proxies")
+        if not isinstance(proxies, list):
+            log(f"[WARN] Clash output has no proxy list: {source_url}")
+            continue
+
+        configs.append((source_url, data))
+
+    if not configs:
+        raise RuntimeError("No valid Clash output was produced.")
+
+    base = configs[0][1]
+
+    merged = []
+    seen = set()
+
+    for _, data in configs:
+        for proxy in data.get("proxies") or []:
+            if not isinstance(proxy, dict):
+                continue
+            name = str(proxy.get("name", "")).strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            merged.append(proxy)
+
+    base["proxies"] = merged
+
+    # Make merged nodes available in normal selectable/test groups.
+    group_types = {
+        "select",
+        "url-test",
+        "fallback",
+        "load-balance",
+    }
+
+    groups = base.get("proxy-groups")
+    if isinstance(groups, list):
+        all_names = [p["name"] for p in merged if p.get("name")]
+
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+
+            if group.get("type") not in group_types:
+                continue
+
+            current = group.get("proxies")
+            if not isinstance(current, list):
+                current = []
+                group["proxies"] = current
+
+            existing = set(str(x) for x in current)
+            for name in all_names:
+                if name not in existing:
+                    current.append(name)
+
+    return yaml.safe_dump(
+        base,
+        allow_unicode=True,
+        sort_keys=False,
+        default_flow_style=False,
+    )
+
+
+def convert_all(target, urls):
+    """
+    Convert sources independently. Failed sources are isolated and
+    returned to the caller for status reporting.
+    """
     if not urls:
         raise RuntimeError(f"No subscription URLs available for target={target}")
 
-    # subconverter accepts multiple URLs separated by |.
-    joined = "|".join(urls)
-    endpoint = f"{SUBCONVERTER}/sub?target={quote(target)}&url={quote(joined, safe='')}"
-    r = requests.get(endpoint, headers=HEADERS, timeout=CONVERT_TIMEOUT)
-    r.raise_for_status()
-    if not r.text.strip():
-        raise RuntimeError(f"subconverter returned empty output for {target}")
-    return r.text
+    successful = []
+    failed = []
+
+    for i, url in enumerate(urls, 1):
+        try:
+            result = convert_one(target, url)
+            successful.append((url, result))
+            log(f"[CONVERT] {target} {i}/{len(urls)} OK  {url}")
+        except Exception as exc:
+            failed.append((url, str(exc)))
+            log(f"[WARN] {target} {i}/{len(urls)} FAILED  {url}")
+            log(f"       {exc}")
+
+    if not successful:
+        raise RuntimeError(
+            f"All {target} conversions failed."
+        )
+
+    return successful, failed
 
 
 def validate_clash(text):
@@ -239,18 +410,48 @@ def main():
     save_sources(subscription_urls)
     log(f"[INFO] unique subscription URLs = {len(subscription_urls)}")
 
-    # Generate Clash and V2Ray from the same normalized source set.
-    clash = convert("clash", subscription_urls)
+    # Convert each subscription independently. A single broken source
+    # therefore cannot cause the entire combined request to return 400.
+    clash_outputs, clash_failed = convert_all(
+        "clash",
+        subscription_urls,
+    )
+
+    clash = merge_clash_outputs(clash_outputs)
     clash_count = validate_clash(clash)
-    (OUTPUT / "clash.yaml").write_text(clash, encoding="utf-8")
+    (OUTPUT / "clash.yaml").write_text(
+        clash,
+        encoding="utf-8",
+    )
 
-    # Ask subconverter for V2Ray output as the authoritative conversion.
-    v2ray = convert("v2ray", subscription_urls)
-    (OUTPUT / "v2ray-subconverter.txt").write_text(v2ray, encoding="utf-8")
+    # Convert V2Ray independently, decode each result, merge node links,
+    # then encode the final subscription once.
+    v2ray_outputs, v2ray_failed = convert_all(
+        "v2ray",
+        subscription_urls,
+    )
 
-    # Also keep a simple node-link Base64 subscription when the source format
-    # exposes standard URI links.
+    converted_nodes = []
+    for source_url, converted in v2ray_outputs:
+        found = decode_v2ray_output(converted)
+        log(f"[V2RAY] {len(found):4d} nodes  {source_url}")
+        converted_nodes.extend(found)
+
+    converted_nodes = unique(converted_nodes)
+
+    raw_v2ray = "\n".join(converted_nodes)
+    if raw_v2ray:
+        raw_v2ray += "\n"
+
+    (OUTPUT / "v2ray-subconverter.txt").write_text(
+        base64.b64encode(raw_v2ray.encode()).decode() + "\n",
+        encoding="utf-8",
+    )
+
+    # Also keep direct node extraction for sources that expose standard
+    # node URIs without requiring subconverter.
     nodes, failed_node_fetches = fetch_nodes(subscription_urls)
+    nodes = unique(nodes + converted_nodes)
     save_nodes(nodes)
 
     write_meta(
@@ -258,8 +459,13 @@ def main():
         len(nodes),
         clash_count,
         failed_readmes,
-        failed_node_fetches,
+        failed_node_fetches + len(clash_failed) + len(v2ray_failed),
     )
+
+    log(f"[DONE] clash proxies = {clash_count}")
+    log(f"[DONE] extracted/converted node links = {len(nodes)}")
+    log(f"[DONE] clash conversion failures = {len(clash_failed)}")
+    log(f"[DONE] v2ray conversion failures = {len(v2ray_failed)}")
 
     log(f"[DONE] clash proxies = {clash_count}")
     log(f"[DONE] extracted node links = {len(nodes)}")
