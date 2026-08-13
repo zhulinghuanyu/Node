@@ -11,18 +11,12 @@ from datetime import datetime, timezone, timedelta
 # ======================= 自定义 YAML Dumper 以实现 proxies 单行输出 =======================
 class FlowDict(dict):
     pass
-
 class FlowDumper(yaml.SafeDumper):
     pass
-
 def _represent_flow_dict(dumper, data):
-    # 强制字典采用流式 (Flow style) 即 {key: value} 格式
     return dumper.represent_mapping('tag:yaml.org,2002:map', data.items(), flow_style=True)
-
 FlowDumper.add_representer(FlowDict, _represent_flow_dict)
-
 def convert_to_flow(obj):
-    """递归将字典转为 FlowDict，用于触发 PyYAML 单行渲染"""
     if isinstance(obj, dict):
         return FlowDict({k: convert_to_flow(v) for k, v in obj.items()})
     elif isinstance(obj, list):
@@ -30,22 +24,18 @@ def convert_to_flow(obj):
     return obj
 
 # ======================= 配置 =======================
-SOURCES_FILE = 'sources.txt'   # 来源清单，一行一个 URL
-
+SOURCES_FILE = 'sources.txt' 
 DEFAULT_SOURCES = [  # sources.txt 不存在时的兜底列表
     "https://raw.githubusercontent.com/toshare5/toshare5.github.io/main/README.md",
     "https://raw.githubusercontent.com/abshare3/abshare3.github.io/main/README.md",
     "https://raw.githubusercontent.com/mkshare3/mkshare3.github.io/main/README.md",
     "https://raw.githubusercontent.com/tolinkshare2/tolinkshare2.github.io/main/README.md",
 ]
-
 UA_LIST = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'clash-verge/v1.7.3', 'v2rayN/6.45', 'Shadowrocket/2.2.44', 'Quantumult/601',
 ]
-
 def load_sources():
-    """从 sources.txt 读取来源列表（支持 # 注释）"""
     urls = []
     try:
         with open(SOURCES_FILE, encoding='utf-8') as f:
@@ -65,7 +55,6 @@ def is_cf_block(text):
         'attention required!', 'cloudflare ray id', 'enable cookies',
         'security service to protect', 'error 521', 'error 522', 'error 523',
     ])
-
 def _try_get(url, ua, proxies=None, timeout=15):
     try:
         r = requests.get(url, headers={'User-Agent': ua, 'Accept': '*/*'},
@@ -75,9 +64,7 @@ def _try_get(url, ua, proxies=None, timeout=15):
     except Exception:
         pass
     return None
-
 def fetch(url, retries=2):
-    """自建代理 > 轮换UA直连 > 公共中继(绕过IP级403)，均带重试"""
     proxy = os.environ.get('PROXY_URL', '').strip()
     if proxy:
         proxies = {'http': proxy, 'https': proxy}
@@ -86,13 +73,11 @@ def fetch(url, retries=2):
             if text is not None:
                 return text
             time.sleep(1)
-
     for ua in UA_LIST:
         text = _try_get(url, ua)
         if text is not None:
             return text
         time.sleep(0.5)
-
     enc = urllib.parse.quote(url, safe='')
     relays = [
         f'https://api.allorigins.win/raw?url={enc}',
@@ -114,26 +99,18 @@ EXCLUDE_EXT = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.ico', '.svg')
 EXCLUDE_LINE_KEYWORDS = ['注册', '试用', '邀请', '购买', '续费', '官网',
                          '机场', '下载', '教程', '客服', 'banner', '广告']
 SUB_KEYWORDS = ['订阅', 'subscription']
-
 def clean_url(u):
     return u.strip().rstrip('.,)!]\'"')
-
 def is_bad_url(u):
     low = u.lower()
     return any(d in low for d in EXCLUDE_DOMAINS) or low.endswith(EXCLUDE_EXT)
-
 def extract_sub_urls(text):
-    """只提取真正的订阅链接，过滤注册/推广/图片等杂链"""
     sub_urls = set()
-
-    # ① 代码块 ``` 内的链接
     for block in re.findall(r'```[\s\S]*?```', text):
         for u in re.findall(r'https?://[^\s<>"\']+', block):
             u = clean_url(u)
             if u and not is_bad_url(u):
                 sub_urls.add(u)
-
-    # ② “订阅”关键词 同行 / 下方4行内 的链接
     lines = text.split('\n')
     for i, line in enumerate(lines):
         if any(k in line.lower() for k in SUB_KEYWORDS):
@@ -151,8 +128,6 @@ def extract_sub_urls(text):
                     u = clean_url(u)
                     if u and not is_bad_url(u):
                         sub_urls.add(u)
-
-    # ③ 兜底：逐行扫描但跳过推广行
     if not sub_urls:
         for line in lines:
             if any(k in line for k in EXCLUDE_LINE_KEYWORDS):
@@ -170,7 +145,6 @@ def decode_base64(s):
         return base64.b64decode(s).decode('utf-8')
     except Exception:
         return s
-
 def parse_vmess(link):
     try:
         j = json.loads(decode_base64(link[8:]))
@@ -182,7 +156,6 @@ def parse_vmess(link):
                             if j.get('net') == 'ws' else None), 'skip-cert-verify': True}
     except Exception:
         return None
-
 def parse_vless(link):
     try:
         link = link[8:]
@@ -211,7 +184,6 @@ def parse_vless(link):
         return node
     except Exception:
         return None
-
 def parse_trojan(link):
     try:
         link = link[9:]
@@ -233,7 +205,6 @@ def parse_trojan(link):
         return node
     except Exception:
         return None
-
 def parse_ss(link):
     try:
         link = link[5:]
@@ -252,7 +223,6 @@ def parse_ss(link):
                 'cipher': method, 'password': password, 'udp': True}
     except Exception:
         return None
-
 def parse_node(link):
     if link.startswith('vmess://'):  return parse_vmess(link)
     if link.startswith('vless://'):  return parse_vless(link)
@@ -262,13 +232,11 @@ def parse_node(link):
 
 # ======================= 反向转换（Clash -> URI） =======================
 def clash_to_uri(p):
-    """把 Clash 代理字典反向转成 vmess/vless/trojan/ss 分享链接"""
     try:
         t, server, port = p.get('type'), p.get('server'), p.get('port')
         name = urllib.parse.quote(p.get('name', ''))
         ws = p.get('ws-opts') or {}
         ws_path, ws_host = ws.get('path', '/'), (ws.get('headers') or {}).get('Host', '')
-
         if t == 'vmess':
             obj = {'v': '2', 'ps': p.get('name', ''), 'add': server, 'port': str(port),
                    'id': p.get('uuid'), 'aid': str(p.get('alterId', 0)), 'type': 'auto',
@@ -279,7 +247,6 @@ def clash_to_uri(p):
             elif p.get('network') == 'grpc':
                 obj['path'] = (p.get('grpc-opts') or {}).get('grpc-service-name', '')
             return 'vmess://' + base64.b64encode(json.dumps(obj).encode()).decode()
-
         if t == 'vless':
             params = {'type': p.get('network', 'tcp'),
                       'security': 'tls' if p.get('tls') else 'none'}
@@ -296,7 +263,6 @@ def clash_to_uri(p):
                                'pbk': p['reality-opts'].get('public-key', ''),
                                'sid': p['reality-opts'].get('short-id', '')})
             return f"vless://{p.get('uuid')}@{server}:{port}?{urllib.parse.urlencode(params)}#{name}"
-
         if t == 'trojan':
             params = {}
             if p.get('sni'):
@@ -309,7 +275,6 @@ def clash_to_uri(p):
             pwd = urllib.parse.quote(p.get('password', ''), safe='')
             q = urllib.parse.urlencode(params)
             return f"trojan://{pwd}@{server}:{port}?{q}#{name}" if q else f"trojan://{pwd}@{server}:{port}#{name}"
-
         if t == 'ss':
             b64 = base64.b64encode(f"{p.get('cipher')}:{p.get('password')}".encode()).decode()
             return f"ss://{b64}@{server}:{port}#{name}"
@@ -327,7 +292,6 @@ def generate_clash_config(proxies):
                 'fake-ip-range': '198.18.0.1/16',
                 'nameserver': ['https://doh.pub/dns-query', 'https://doh.dns.sb/dns-query'],
                 'fallback': ['https://doh.dns.sb/dns-query', 'https://dns.cloudflare.com/dns-query']},
-        # 【修改点】：使用 convert_to_flow 包裹 proxies，触发单行渲染
         'proxies': convert_to_flow(proxies),
         'proxy-groups': [
             {'name': '🚀 节点选择', 'type': 'select', 'proxies': names + ['DIRECT']},
@@ -338,7 +302,6 @@ def generate_clash_config(proxies):
 
 # ======================= README 自动刷新 =======================
 def update_readme(v2_count, clash_count):
-    """刷新 README 中 AUTO-INFO 区块的更新时间与节点数"""
     try:
         with open('README.md', encoding='utf-8') as f:
             text = f.read()
@@ -349,7 +312,7 @@ def update_readme(v2_count, clash_count):
             r'<!-- AUTO-INFO START -->.*?<!-- AUTO-INFO END -->',
             lambda m: f'<!-- AUTO-INFO START -->\n{block}\n<!-- AUTO-INFO END -->',
             text, flags=re.S)
-        if n == 0:  # 没有标记就追加到末尾
+        if n == 0: 
             new_text = text + f'\n<!-- AUTO-INFO START -->\n{block}\n<!-- AUTO-INFO END -->\n'
         with open('README.md', 'w', encoding='utf-8') as f:
             f.write(new_text)
@@ -361,8 +324,6 @@ def update_readme(v2_count, clash_count):
 def main():
     print("开始爬取任务...")
     sub_urls, direct_nodes = set(), []
-
-    # 1) 读取来源页面，精准提取订阅链接
     for url in load_sources():
         try:
             r = requests.get(url, headers={'User-Agent': UA_LIST[0]}, timeout=15)
@@ -374,19 +335,14 @@ def main():
                                 re.findall(r'(vmess|vless|trojan|ss|ssr)://[^\s<>"\'，]+', r.text))
         except Exception as e:
             print(f"读取来源出错 {url}: {e}")
-
     v2ray_nodes = list(set(direct_nodes))
     clash_proxies = []
-
-    # 2) 多渠道抓取每个订阅链接
     for url in sub_urls:
         content = fetch(url)
         if content is None:
             print(f"[SUB] {url} -> 所有通道均失败(源站保护或宕机)")
             continue
         content = content.strip()
-
-        # 源站直接返回 Clash YAML
         if 'proxies:' in content or 'port:' in content:
             try:
                 data = yaml.safe_load(content)
@@ -396,8 +352,6 @@ def main():
                     continue
             except Exception:
                 pass
-
-        # Base64 / 明文节点
         decoded = decode_base64(content)
         matches = re.findall(r'(vmess|vless|trojan|ss|ssr)://[^\s<>"\'，]+', decoded)
         matches += re.findall(r'(vmess|vless|trojan|ss|ssr)://[^\s<>"\'，]+', content)
@@ -406,8 +360,6 @@ def main():
             m = m.rstrip('.,)!]')
             if m not in v2ray_nodes:
                 v2ray_nodes.append(m)
-
-    # 3) V2Ray 节点 -> Clash 代理，并记录来源
     parsed_from_uri = set()
     for node in v2ray_nodes:
         p = parse_node(node)
@@ -415,26 +367,19 @@ def main():
             clash_proxies.append(p)
             parsed_from_uri.add(p['name'])
     clash_proxies = list({p['name']: p for p in clash_proxies if p.get('name')}.values())
-
-    # 4) 只有 YAML 的节点反向生成 v2ray 分享链接，补齐 v2ray.txt
     for p in clash_proxies:
         if p['name'] not in parsed_from_uri:
             uri = clash_to_uri(p)
             if uri and uri not in v2ray_nodes:
                 v2ray_nodes.append(uri)
-
     if not clash_proxies and not v2ray_nodes:
         print("本次未发现任何节点，不更新文件，保留上一版订阅。")
         return
-
-    # 5) 输出订阅文件
     if v2ray_nodes:
         with open('v2ray.txt', 'w') as f:
-            f.write(base64.b64encode('\n'.join(v2ray_nodes).encode()).decode())
-            
+            f.write(base64.b64encode('\n'.join(v2ray_nodes).encode()).decode())         
     if clash_proxies:
         with open('clash.yaml', 'w', encoding='utf-8') as f:
-            # 【修改点】：指定 FlowDumper 并设置 width=4096 防止单行过长被强制折行
             yaml.dump(
                 generate_clash_config(clash_proxies), 
                 f, 
@@ -444,8 +389,6 @@ def main():
                 default_flow_style=False, 
                 width=4096
             )
-
-    # 6) 刷新 README 统计信息
     update_readme(len(v2ray_nodes), len(clash_proxies))
     print(f"完成！v2ray 节点 {len(v2ray_nodes)} 条，clash 节点 {len(clash_proxies)} 个。")
 
