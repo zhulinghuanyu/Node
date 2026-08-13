@@ -8,6 +8,27 @@ import os
 import time
 from datetime import datetime, timezone, timedelta
 
+# ======================= 自定义 YAML Dumper 以实现 proxies 单行输出 =======================
+class FlowDict(dict):
+    pass
+
+class FlowDumper(yaml.SafeDumper):
+    pass
+
+def _represent_flow_dict(dumper, data):
+    # 强制字典采用流式 (Flow style) 即 {key: value} 格式
+    return dumper.represent_mapping('tag:yaml.org,2002:map', data.items(), flow_style=True)
+
+FlowDumper.add_representer(FlowDict, _represent_flow_dict)
+
+def convert_to_flow(obj):
+    """递归将字典转为 FlowDict，用于触发 PyYAML 单行渲染"""
+    if isinstance(obj, dict):
+        return FlowDict({k: convert_to_flow(v) for k, v in obj.items()})
+    elif isinstance(obj, list):
+        return [convert_to_flow(i) for i in obj]
+    return obj
+
 # ======================= 配置 =======================
 SOURCES_FILE = 'sources.txt'   # 来源清单，一行一个 URL
 
@@ -304,9 +325,10 @@ def generate_clash_config(proxies):
         'log-level': 'info', 'external-controller': '127.0.0.1:9090',
         'dns': {'enabled': True, 'ipv6': False, 'enhanced-mode': 'fake-ip',
                 'fake-ip-range': '198.18.0.1/16',
-                'nameserver': ['https://doh.pub/dns-query', 'https://dns.alidns.com/dns-query'],
+                'nameserver': ['https://doh.pub/dns-query', 'https://doh.dns.sb/dns-query'],
                 'fallback': ['https://doh.dns.sb/dns-query', 'https://dns.cloudflare.com/dns-query']},
-        'proxies': proxies,
+        # 【修改点】：使用 convert_to_flow 包裹 proxies，触发单行渲染
+        'proxies': convert_to_flow(proxies),
         'proxy-groups': [
             {'name': '🚀 节点选择', 'type': 'select', 'proxies': names + ['DIRECT']},
             {'name': '🎯 全球直连', 'type': 'select', 'proxies': ['DIRECT', '🚀 节点选择']},
@@ -409,9 +431,19 @@ def main():
     if v2ray_nodes:
         with open('v2ray.txt', 'w') as f:
             f.write(base64.b64encode('\n'.join(v2ray_nodes).encode()).decode())
+            
     if clash_proxies:
         with open('clash.yaml', 'w', encoding='utf-8') as f:
-            yaml.dump(generate_clash_config(clash_proxies), f, allow_unicode=True, sort_keys=False)
+            # 【修改点】：指定 FlowDumper 并设置 width=4096 防止单行过长被强制折行
+            yaml.dump(
+                generate_clash_config(clash_proxies), 
+                f, 
+                Dumper=FlowDumper, 
+                allow_unicode=True, 
+                sort_keys=False, 
+                default_flow_style=False, 
+                width=4096
+            )
 
     # 6) 刷新 README 统计信息
     update_readme(len(v2ray_nodes), len(clash_proxies))
