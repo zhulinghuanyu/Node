@@ -16,17 +16,17 @@ dns:
   - https://doh.dns.sb/dns-query
   - https://dns.cloudflare.com/dns-query
 proxies:
-- {name: 节点加速器, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 提醒您, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 您的Clash客户端, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 版本已过时, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 请访问我们的, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 官方网站, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 根据您的, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 设备和系统, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 下载新版本的客户端, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 客户端更新成功后, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
-- {name: 请重新更新订阅链接, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 5197b4cf-da7d-4942-b736-7166b1fd4094, udp: true}
+- {name: 节点加速器, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 提醒您, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 您的Clash客户端, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 版本已过时, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 请访问我们的, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 官方网站, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 根据您的, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 设备和系统, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 下载新版本的客户端, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 客户端更新成功后, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
+- {name: 请重新更新订阅链接, type: ss, server: 127.0.0.1, port: '1080', cipher: aes-128-gcm, password: 26e4e334-032b-4a2d-924d-282b5204f8c3, udp: true}
 proxy-groups:
 - name: 🚀 节点选择
   type: select
